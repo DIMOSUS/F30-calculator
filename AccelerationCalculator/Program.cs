@@ -18,12 +18,14 @@ namespace AccelerationCalculator
         static readonly double WellsMass = 100;//included in the mass of cars
         static readonly double FrontArea = 2.35;
         static readonly double TransmissionEfficiency = 0.78;
+        static readonly double TurboLagTime = 0.0;//2.2 for n20, or zero for launch
+
 
         //zf8 45hp
         static readonly double[] GearRatios = new double[] { 4.714, 3.143, 2.106, 1.667, 1.285, 1.000, 0.839, 0.667 };
         static readonly double FirstGearShift = 6500;
         static readonly double OtherGearShift = 6800;
-        static readonly double GearShiftTime = 0.15;
+        static readonly double GearShiftTime = 0.1;
         static readonly double FirstGearMaxSpeed = 55 * kmh2ms;//kmh
 
         static readonly double Friction = 1.0;
@@ -52,9 +54,9 @@ namespace AccelerationCalculator
             return Cx * FrontArea * p * x * x * x / 2;
         }
 
-        static double GetWellPower(double Speed, double EngineSpeed, ref double WheelSlipTime)
+        static double GetWellPower(double Speed, double EngineSpeed, double turboLagTime, ref double WheelSlipTime)
         {
-            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency - AirResistance(Speed);
+            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0) - AirResistance(Speed);
             //P=F*V
             double dirtForce = dirtPower / (Speed + 0.25);
             double theoreticalForceLimitAWD = Mass * 9.8 * Friction * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
@@ -74,11 +76,12 @@ namespace AccelerationCalculator
 
             double time = 0;
             double speed = 0;
-            double engineSpeed = 0;
+            double engineSpeed;
             double wheelSlipTime = 0;
             double distance = 0;
             double quarter = 0;
             double quarterSpeed = 0;
+            double turboLagTime = TurboLagTime;
             int quarterGear = 0;
 
             bool needGearShift = false;
@@ -113,6 +116,7 @@ namespace AccelerationCalculator
                     needGearShift = false;
                     gear++;
                     time += GearShiftTime;
+                    turboLagTime -= GearShiftTime;
                     distance += speed * GearShiftTime;
                     continue;
                 }
@@ -124,11 +128,12 @@ namespace AccelerationCalculator
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
-                double powerInc = GetWellPower(speed, engineSpeed, ref wheelSlipTime) * TickSize;
+                double powerInc = GetWellPower(speed, engineSpeed, turboLagTime, ref wheelSlipTime) * TickSize;
 
                 speed = Math.Sqrt(2 * (prePower + powerInc) / (Mass + WellsMass * 0.8));
 
                 time += TickSize;
+                turboLagTime -= TickSize;
 
                 if (gear == 1)
                 {
