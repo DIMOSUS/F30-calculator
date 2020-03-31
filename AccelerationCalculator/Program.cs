@@ -16,7 +16,7 @@ namespace AccelerationCalculator
         static readonly double EnginePower = 280 * w2hp;
         static readonly double Mass = 1575;
         static readonly double WellsMass = 100;//included in the mass of cars
-        static readonly double FrontArea = 2.35;
+        static readonly double FrontArea = 2.2;
         static readonly double TransmissionEfficiency = 0.78;
         static readonly double TurboLagTime = 0.0;//2.2 for n20, or zero for launch
 
@@ -25,7 +25,7 @@ namespace AccelerationCalculator
         static readonly double[] GearRatios = new double[] { 4.714, 3.143, 2.106, 1.667, 1.285, 1.000, 0.839, 0.667 };
         static readonly double FirstGearShift = 6500;
         static readonly double OtherGearShift = 6800;
-        static readonly double GearShiftTime = 0.1;
+        static readonly double GearShiftTime = 0.15;
         static readonly double FirstGearMaxSpeed = 55 * kmh2ms;//kmh
 
         static readonly double Friction = 1.0;
