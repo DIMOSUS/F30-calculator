@@ -13,7 +13,7 @@ namespace AccelerationCalculator
         static readonly bool RWD = true;
 
         //f30
-        static readonly double EnginePower = 245 * w2hp;
+        static readonly double EnginePower = 280 * w2hp;
         static readonly double Mass = 1575;
         static readonly double WellsMass = 100;//included in the mass of cars
         static readonly double FrontArea = 2.35;
@@ -78,17 +78,25 @@ namespace AccelerationCalculator
             double wheelSlipTime = 0;
             double distance = 0;
             double quarter = 0;
+            double quarterSpeed = 0;
+            int quarterGear = 0;
 
             bool needGearShift = false;
             int gear = 1;
 
+            Console.WriteLine("km/h\ttime");
+
             while (speed < 250 * kmh2ms)
             {
-                distance += speed * TickSize;
-                if (quarter == 0 && distance > 402)
-                    quarter = time;
-
                 double speedKmH = speed * 3.6;
+
+                if (quarter == 0 && distance > 402)
+                {
+                    quarter = time;
+                    quarterSpeed = speedKmH;
+                    quarterGear = gear;
+                }
+
                 int iSpeed = (int)Math.Floor(speedKmH * 0.1);
                 if(iSpeed > 0)
                 {
@@ -105,8 +113,12 @@ namespace AccelerationCalculator
                     needGearShift = false;
                     gear++;
                     time += GearShiftTime;
+                    distance += speed * GearShiftTime;
                     continue;
                 }
+
+                distance += speed * TickSize;
+
 
                 engineSpeed = GetEngineSpeed(gear, speed);
 
@@ -130,9 +142,11 @@ namespace AccelerationCalculator
                 }
             }
             Console.WriteLine();
-            Console.WriteLine("Quarter {0}", Math.Round(quarter, 2));
-            Console.WriteLine("100-200 {0}", Math.Round(times[20] - times[10], 2));
-            Console.WriteLine("Wheel Slip Time: {0}", Math.Round(wheelSlipTime, 2));
+            Console.WriteLine("Quarter \t{0}", Math.Round(quarter, 2));
+            Console.WriteLine("Quarter Speed \t{0}", Math.Round(quarterSpeed, 2));
+            Console.WriteLine("Quarter Gear \t{0}", quarterGear);
+            Console.WriteLine("100-200 \t{0}", Math.Round(times[20] - times[10], 2));
+            Console.WriteLine("Wheel Slip Time {0}", Math.Round(wheelSlipTime, 2));
         }
     }
 }
