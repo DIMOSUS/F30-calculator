@@ -17,7 +17,7 @@ namespace AccelerationCalculator
         static readonly double Mass = 1575;
         static readonly double WellsMass = 100;//included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.78;
+        static readonly double TransmissionEfficiency = 0.77;
         static readonly double TurboLagTime = 0.0;//2.2 for n20, or zero for launch
 
 
@@ -58,13 +58,13 @@ namespace AccelerationCalculator
         {
             double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0) - AirResistance(Speed);
             //P=F*V
-            double dirtForce = dirtPower / (Speed + 0.25);
+            double dirtForce = dirtPower / (Speed + 1);
             double theoreticalForceLimitAWD = Mass * 9.8 * Friction * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
 
             if (dirtForce > theoreticalForceLimitAWD)
             {
                 WheelSlipTime += TickSize;
-                return dirtPower * (theoreticalForceLimitAWD / dirtForce) * 0.8;
+                return dirtPower * (theoreticalForceLimitAWD / dirtForce) * 0.75;
             }
 
             return dirtPower;
