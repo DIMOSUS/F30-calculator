@@ -14,11 +14,11 @@ namespace AccelerationCalculator
 
         //f30
         static readonly double EnginePower = 280 * w2hp;
-        static readonly double Mass = 1575;
-        static readonly double WellsMass = 100;//included in the mass of cars
+        static readonly double Mass = 1575;//(With Wells)
+        static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.77;
-        static readonly double TurboLagTime = 0.0;//2.2 for n20, or zero for launch
+        static readonly double TransmissionEfficiency = 0.82;
+        static readonly double TurboLagTime = 0.2;//2.2 for n20 without launch
 
 
         //zf8 45hp
@@ -35,8 +35,8 @@ namespace AccelerationCalculator
         {
             if (EngineSpeed < 1250)
                 return EngineSpeed / 1250 * EnginePower * 0.25;
-            if (EngineSpeed < 5000)
-                return EngineSpeed / 5000 * EnginePower;
+            if (EngineSpeed < 5500)
+                return EngineSpeed / 5500 * EnginePower;
             return EnginePower;
         }
 
@@ -121,9 +121,6 @@ namespace AccelerationCalculator
                     continue;
                 }
 
-                distance += speed * TickSize;
-
-
                 engineSpeed = GetEngineSpeed(gear, speed);
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
@@ -134,6 +131,7 @@ namespace AccelerationCalculator
 
                 time += TickSize;
                 turboLagTime -= TickSize;
+                distance += speed * TickSize;
 
                 if (gear == 1)
                 {
