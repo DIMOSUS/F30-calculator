@@ -17,8 +17,8 @@ namespace AccelerationCalculator
         static readonly double Mass = 1575;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.81;
-        static readonly double TurboLagTime = 0.2;//2.1 for n20 without launch
+        static readonly double TransmissionEfficiency = 0.78;
+        static readonly double TurboLagTime = 0.4;//2.2 for n20 without launch
 
 
         //zf8 45hp
@@ -35,8 +35,8 @@ namespace AccelerationCalculator
         {
             if (EngineSpeed < 1250)
                 return EngineSpeed / 1250 * EnginePower * 0.25;
-            if (EngineSpeed < 5500)
-                return EngineSpeed / 5500 * EnginePower;
+            if (EngineSpeed < 5000)
+                return EngineSpeed / 5000 * EnginePower;
             return EnginePower;
         }
 
@@ -89,7 +89,7 @@ namespace AccelerationCalculator
 
             Console.WriteLine("km/h\ttime");
 
-            while (speed < 250 * kmh2ms)
+            while (speed < 230 * kmh2ms)
             {
                 double speedKmH = speed * 3.6;
 
