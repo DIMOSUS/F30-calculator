@@ -17,8 +17,8 @@ namespace AccelerationCalculator
         static readonly double Mass = 1575;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.82;
-        static readonly double TurboLagTime = 0.2;//2.2 for n20 without launch
+        static readonly double TransmissionEfficiency = 0.81;
+        static readonly double TurboLagTime = 0.2;//2.1 for n20 without launch
 
 
         //zf8 45hp
@@ -42,7 +42,7 @@ namespace AccelerationCalculator
 
         static double GetEngineSpeed(int Gear, double Speed)
         {
-            return Math.Max(FirstGearShift / FirstGearMaxSpeed * Speed * GearRatios[Gear - 1] / GearRatios[0], 1300);
+            return Math.Max(FirstGearShift / FirstGearMaxSpeed * Speed * GearRatios[Gear - 1] / GearRatios[0], 2000);
         }
 
         static double AirResistance(double speed)
@@ -58,7 +58,7 @@ namespace AccelerationCalculator
         {
             double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0) - AirResistance(Speed);
             //P=F*V
-            double dirtForce = dirtPower / (Speed + 1);
+            double dirtForce = dirtPower / (Speed + 0.5);
             double theoreticalForceLimitAWD = Mass * 9.8 * Friction * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
 
             if (dirtForce > theoreticalForceLimitAWD)
