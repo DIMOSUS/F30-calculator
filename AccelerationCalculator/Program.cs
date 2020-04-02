@@ -72,11 +72,15 @@ namespace AccelerationCalculator
 
         static void Main(string[] args)
         {
+            Graph g_speed = new Graph("speed", 500, 300, 20, 200);
+            Graph g_e_speed = new Graph("e_speed", 500, 300, 20, 7000, 1, 1000 );
+            Graph g_weel_pow = new Graph("weel_pow", 500, 300, 20, EnginePower / w2hp, 1, 50 );
+
             double[] times = new double[30];
 
             double time = 0;
             double speed = 0;
-            double engineSpeed;
+            double engineSpeed = 0;
             double wheelSlipTime = 0;
             double distance = 0;
             double quarter = 0;
@@ -115,6 +119,10 @@ namespace AccelerationCalculator
                 {
                     needGearShift = false;
                     gear++;
+
+                    g_speed.Line(time, speedKmH, time + GearShiftTime, speedKmH);
+                    g_e_speed.Line(time, engineSpeed, time + GearShiftTime, GetEngineSpeed(gear, speed));
+
                     time += GearShiftTime;
                     turboLagTime -= GearShiftTime;
                     distance += speed * GearShiftTime;
@@ -125,13 +133,17 @@ namespace AccelerationCalculator
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
-                double powerInc = GetWellPower(speed, engineSpeed, turboLagTime, ref wheelSlipTime) * TickSize;
+                double powerInc = GetWellPower(speed, engineSpeed, turboLagTime, ref wheelSlipTime);
 
-                speed = Math.Sqrt(2 * (prePower + powerInc) / (Mass + WellsMass * 0.8));
+                speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
 
                 time += TickSize;
                 turboLagTime -= TickSize;
                 distance += speed * TickSize;
+
+                g_speed.Point(time, speedKmH);
+                g_e_speed.Point(time, engineSpeed);
+                g_weel_pow.Point(time, powerInc / w2hp);
 
                 if (gear == 1)
                 {
@@ -150,6 +162,10 @@ namespace AccelerationCalculator
             Console.WriteLine("Quarter Gear \t{0}", quarterGear);
             Console.WriteLine("100-200 \t{0}", Math.Round(times[20] - times[10], 2));
             Console.WriteLine("Wheel Slip Time {0}", Math.Round(wheelSlipTime, 2));
+
+            g_speed.Save();
+            g_e_speed.Save();
+            g_weel_pow.Save();
         }
     }
 }
