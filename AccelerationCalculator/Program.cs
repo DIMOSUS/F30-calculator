@@ -17,7 +17,7 @@ namespace AccelerationCalculator
         static readonly double Mass = 1575;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.78;
+        static readonly double TransmissionEfficiency = 0.8;
         static readonly double TurboLagTime = 0.4;//2.2 for n20 without launch
 
 
@@ -28,7 +28,7 @@ namespace AccelerationCalculator
         static readonly double GearShiftTime = 0.15;
         static readonly double FirstGearMaxSpeed = 55 * kmh2ms;//kmh
 
-        static readonly double Friction = 1.0;
+        static readonly double Friction = 1.05;
 
         //BMW n20
         static double GetEnginePower(double EngineSpeed)
@@ -42,7 +42,7 @@ namespace AccelerationCalculator
 
         static double GetEngineSpeed(int Gear, double Speed)
         {
-            return Math.Max(FirstGearShift / FirstGearMaxSpeed * Speed * GearRatios[Gear - 1] / GearRatios[0], 2000);
+            return Math.Max(FirstGearShift / FirstGearMaxSpeed * Speed * GearRatios[Gear - 1] / GearRatios[0], 1500);
         }
 
         static double AirResistance(double speed)
@@ -56,7 +56,12 @@ namespace AccelerationCalculator
 
         static double GetWellPower(double Speed, double EngineSpeed, double turboLagTime, ref double WheelSlipTime)
         {
-            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0) - AirResistance(Speed);
+            double Fk = 0.01 * (1 + 5.5E-4 * Speed * Speed);
+
+            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0);
+            dirtPower *= 1 - Fk;
+            dirtPower -= AirResistance(Speed);
+
             //P=F*V
             double dirtForce = dirtPower / (Speed + 0.5);
             double theoreticalForceLimitAWD = Mass * 9.8 * Friction * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
@@ -75,6 +80,7 @@ namespace AccelerationCalculator
             Graph g_speed = new Graph("speed", 500, 300, 20, 200);
             Graph g_e_speed = new Graph("e_speed", 500, 300, 20, 7000, 1, 1000 );
             Graph g_weel_pow = new Graph("weel_pow", 500, 300, 20, EnginePower / w2hp, 1, 50 );
+            Graph g_acc = new Graph("acc", 500, 300, 20, 2, 1, 1 );
 
             double[] times = new double[30];
 
@@ -129,13 +135,18 @@ namespace AccelerationCalculator
                     continue;
                 }
 
+
                 engineSpeed = GetEngineSpeed(gear, speed);
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
                 double powerInc = GetWellPower(speed, engineSpeed, turboLagTime, ref wheelSlipTime);
 
-                speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
+                double new_speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
+
+                g_acc.Point(time, (new_speed - speed) / TickSize / 9.8);
+
+                speed = new_speed;
 
                 time += TickSize;
                 turboLagTime -= TickSize;
@@ -166,6 +177,7 @@ namespace AccelerationCalculator
             g_speed.Save();
             g_e_speed.Save();
             g_weel_pow.Save();
+            g_acc.Save();
         }
     }
 }
