@@ -14,10 +14,10 @@ namespace AccelerationCalculator
 
         //f30
         static readonly double EnginePower = 280 * w2hp;
-        static readonly double Mass = 1575;//(With Wells)
+        static readonly double Mass = 1620;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.8;
+        static readonly double TransmissionEfficiency = 0.82;
         static readonly double TurboLagTime = 0.4;//2.2 for n20 without launch
 
 
@@ -28,7 +28,7 @@ namespace AccelerationCalculator
         static readonly double GearShiftTime = 0.15;
         static readonly double FirstGearMaxSpeed = 55 * kmh2ms;//kmh
 
-        static readonly double Friction = 1.05;
+        static readonly double Friction = 1.08;
 
         //BMW n20
         static double GetEnginePower(double EngineSpeed)
@@ -54,7 +54,7 @@ namespace AccelerationCalculator
             return Cx * FrontArea * p * x * x * x / 2;
         }
 
-        static double GetWellPower(double Speed, double EngineSpeed, double turboLagTime, ref double WheelSlipTime)
+        static double GetWellPower(double Speed, double Acceleration_g, double EngineSpeed, double turboLagTime, ref double WheelSlipTime)
         {
             double Fk = 0.01 * (1 + 5.5E-4 * Speed * Speed);
 
@@ -63,13 +63,23 @@ namespace AccelerationCalculator
             dirtPower -= AirResistance(Speed);
 
             //P=F*V
-            double dirtForce = dirtPower / (Speed + 0.5);
-            double theoreticalForceLimitAWD = Mass * 9.8 * Friction * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
+            double dirtForce = dirtPower / (Speed + 0.1);
+            double theoreticalForceLimitAWD = Mass * 9.8 * Friction;// * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
+            if (RWD && !FWD)
+            {
+                double rw_ballance = 0.28 * Acceleration_g;
+                theoreticalForceLimitAWD *= 0.5 + rw_ballance;
+            }
+            if (!RWD && FWD)
+            {
+                double fw_ballance = 0.2 * Acceleration_g;
+                theoreticalForceLimitAWD *= 0.5 - fw_ballance;
+            }
 
             if (dirtForce > theoreticalForceLimitAWD)
             {
                 WheelSlipTime += TickSize;
-                return dirtPower * (theoreticalForceLimitAWD / dirtForce) * 0.75;
+                return dirtPower * (theoreticalForceLimitAWD / dirtForce) * 0.85;
             }
 
             return dirtPower;
@@ -80,7 +90,7 @@ namespace AccelerationCalculator
             Graph g_speed = new Graph("speed", 500, 300, 20, 200);
             Graph g_e_speed = new Graph("e_speed", 500, 300, 20, 7000, 1, 1000 );
             Graph g_weel_pow = new Graph("weel_pow", 500, 300, 20, EnginePower / w2hp, 1, 50 );
-            Graph g_acc = new Graph("acc", 500, 300, 20, 2, 1, 1 );
+            Graph g_acc = new Graph("acceleration", 500, 300, 20, 2, 1, 1 );
 
             double[] times = new double[30];
 
@@ -92,6 +102,7 @@ namespace AccelerationCalculator
             double quarter = 0;
             double quarterSpeed = 0;
             double turboLagTime = TurboLagTime;
+            double acceleration_g = 0;
             int quarterGear = 0;
 
             bool needGearShift = false;
@@ -140,11 +151,11 @@ namespace AccelerationCalculator
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
-                double powerInc = GetWellPower(speed, engineSpeed, turboLagTime, ref wheelSlipTime);
+                double powerInc = GetWellPower(speed, acceleration_g, engineSpeed, turboLagTime, ref wheelSlipTime);
 
                 double new_speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
 
-                g_acc.Point(time, (new_speed - speed) / TickSize / 9.8);
+                acceleration_g = (new_speed - speed) / TickSize / 9.8;
 
                 speed = new_speed;
 
@@ -155,6 +166,7 @@ namespace AccelerationCalculator
                 g_speed.Point(time, speedKmH);
                 g_e_speed.Point(time, engineSpeed);
                 g_weel_pow.Point(time, powerInc / w2hp);
+                g_acc.Point(time, acceleration_g);
 
                 if (gear == 1)
                 {
