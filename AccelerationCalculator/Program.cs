@@ -13,11 +13,11 @@ namespace AccelerationCalculator
         static readonly bool RWD = true;
 
         //f30
-        static readonly double EnginePower = 280 * w2hp;
+        static readonly double EnginePower = 184 * w2hp;
         static readonly double Mass = 1630;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
         static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.82;
+        static readonly double TransmissionEfficiency = 0.81;
         static readonly double TurboLagTime = 0.0;//2.2 for n20 without launch
 
 
@@ -28,17 +28,19 @@ namespace AccelerationCalculator
         static readonly double LaunchEngSpeed = 2500;
         static readonly double GearShiftTime = 0.2;
         static readonly double FirstGearMaxSpeed = 52 * kmh2ms;//kmh
-        static readonly double DSCReaction = 1500;//eng speed per sec
-        static readonly double GearСlutchStart = 0.4;
+        static readonly double DSCReaction = 2;//per sec
+        static readonly double GearСlutchStart = 0.7;
 
-        static readonly double Friction = 1.0;
+        static readonly double Friction = 0.95;
 
         //BMW n20
         static readonly (double, double)[] EngPower = new (double, double)[] {
             (0, 0),
             (700, 0),
             (1250, EnginePower/4),
-            (5000, EnginePower),
+            (4750, EnginePower*0.95),
+            //(5000, EnginePower),
+            (5250, EnginePower),
             (6500, EnginePower),
             (7000, EnginePower*0.94)
         };
@@ -73,15 +75,15 @@ namespace AccelerationCalculator
             return Cx * FrontArea * p * x * x * x / 2;
         }
 
-        static double GetWellPower(double Speed, double Acceleration_g, double EngineSpeed, double turboLagTime, ref bool WheelSlip)
+        static double GetWellPower(double Speed, double Acceleration_g, double EngineSpeed, double turboLagTime, double DSCPower, ref bool WheelSlip)
         {
             double Fk = 0.01 * (1 + 5.5E-4 * Speed * Speed);
 
-            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * (turboLagTime > 0 ? 0.5 : 1.0);
+            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * DSCPower * (turboLagTime > 0 ? 0.5 : 1.0);
             dirtPower *= 1 - Fk;
 
             //P=F*V
-            double dirtForce = dirtPower / (Speed + 0.1);
+            double dirtForce = dirtPower / (Speed + 0.2);
             double theoreticalForceLimitAWD = Mass * 9.8 * Friction;// * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
             if (RWD && !FWD)
             {
@@ -117,6 +119,7 @@ namespace AccelerationCalculator
             Graph g_weel_pow = new Graph("weel_pow", 500, 300, 20, EnginePower / w2hp, 1, 50 );
             Graph g_acc = new Graph("acceleration", 500, 300, 20, 2, 1, 1 );
             Graph g_e_pwr = new Graph("e_pwr", 500, 300, 7000, EnginePower / w2hp * 1.1, 1000, 50 );
+            Graph g_dsc = new Graph("DSC", 500, 300, 20, 1, 1, 1);
 
             double[] times = new double[30];
 
@@ -130,7 +133,7 @@ namespace AccelerationCalculator
             double turboLagTime = TurboLagTime;
             double acceleration_g = 0;
             double gearСlutch = GearСlutchStart;
-            double dscCorr = 0;
+            double dscCorr = 1.0;
             int quarterGear = 0;
             bool wheelSlip = false;
 
@@ -182,21 +185,38 @@ namespace AccelerationCalculator
 
                 engineSpeed = GetEngineSpeed(gear, speed);
 
-                //gearСlutch
-                if (gearСlutch > 0)
-                    engineSpeed = lerp(engineSpeed, LaunchEngSpeed, smoothstep(gearСlutch / GearСlutchStart));
-                gearСlutch -= TickSize;
+                if (gear == 1)
+                {
+                    if (engineSpeed > FirstGearShift)
+                        needGearShift = true;
+                }
+                else
+                {
+                    if (engineSpeed > OtherGearShift)
+                        needGearShift = true;
+                }
 
                 //DSC
                 if (wheelSlip)
-                    dscCorr += DSCReaction * TickSize;
+                    dscCorr = Math.Max(0, dscCorr - DSCReaction * TickSize);
                 else
-                    dscCorr = Math.Max(0, dscCorr - DSCReaction * TickSize * 3);
-                engineSpeed -= dscCorr;
+                    dscCorr = Math.Min(1, dscCorr + DSCReaction * TickSize * 3);
+
+                g_dsc.Point(time, dscCorr);
 
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
-                double powerInc = GetWellPower(speed, acceleration_g, engineSpeed, turboLagTime, ref wheelSlip);
+                double prwCrr = dscCorr;
+                //gearСlutch
+                if (gearСlutch > 0)
+                {
+                    prwCrr *= smoothstep(GearСlutchStart / gearСlutch);
+
+                    engineSpeed = lerp(engineSpeed, LaunchEngSpeed, smoothstep(gearСlutch / GearСlutchStart));
+                    gearСlutch -= TickSize;
+                }
+
+                double powerInc = GetWellPower(speed, acceleration_g, engineSpeed, turboLagTime, prwCrr, ref wheelSlip);
 
                 double new_speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
 
@@ -213,17 +233,6 @@ namespace AccelerationCalculator
                 g_e_speed.Point(time, engineSpeed);
                 g_weel_pow.Point(time, powerInc / w2hp);
                 g_acc.Point(time, acceleration_g);
-
-                if (gear == 1)
-                {
-                    if (engineSpeed > FirstGearShift)
-                        needGearShift = true;
-                }
-                else
-                {
-                    if (engineSpeed > OtherGearShift)
-                        needGearShift = true;
-                }
             }
 
             Console.WriteLine();
@@ -238,6 +247,7 @@ namespace AccelerationCalculator
             g_weel_pow.Save();
             g_acc.Save();
             g_e_pwr.Save();
+            g_dsc.Save();
         }
 
         static double lerp(double v0, double v1, double t)
