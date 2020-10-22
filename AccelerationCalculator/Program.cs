@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection.Emit;
 
 namespace AccelerationCalculator
 {
@@ -13,11 +14,11 @@ namespace AccelerationCalculator
         static readonly bool RWD = true;
 
         //f30
-        static readonly double EnginePower = 184 * w2hp;
-        static readonly double Mass = 1630;//(With Wells)
+        static readonly double EnginePower = 430 * w2hp;
+        static readonly double Mass = 1650;//(With Wells)
         static readonly double WellsMass = 100;//Included in the mass of cars
-        static readonly double FrontArea = 2.2;
-        static readonly double TransmissionEfficiency = 0.81;
+        static readonly double FrontArea = 2.4;
+        static readonly double TransmissionEfficiency = 0.83;
         static readonly double TurboLagTime = 0.0;//2.2 for n20 without launch
 
 
@@ -26,12 +27,13 @@ namespace AccelerationCalculator
         static readonly double FirstGearShift = 6500;
         static readonly double OtherGearShift = 6700;
         static readonly double LaunchEngSpeed = 2500;
-        static readonly double GearShiftTime = 0.2;
+        static readonly double GearShiftTime = 0.15;
         static readonly double FirstGearMaxSpeed = 52 * kmh2ms;//kmh
-        static readonly double DSCReaction = 2;//per sec
         static readonly double GearСlutchStart = 0.7;
 
-        static readonly double Friction = 0.95;
+        static readonly double EngSpeedPerSec = 20000 * TickSize;
+
+        static readonly double Friction = 1.05;
 
         //BMW n20
         static readonly (double, double)[] EngPower = new (double, double)[] {
@@ -45,20 +47,41 @@ namespace AccelerationCalculator
             (7000, EnginePower*0.94)
         };
 
-        static double GetEnginePower(double EngineSpeed)
+        static double LerpData((double, double)[] data, double inValue)
         {
-            if (EngineSpeed >= EngPower[^1].Item1)
-                return EngPower[^1].Item2;
+            if (inValue >= data[^1].Item1)
+                return data[^1].Item2;
 
-            for (int i = EngPower.Length - 1; i > -1; i--)
+            for (int i = data.Length - 1; i > -1; i--)
             {
-                if(EngineSpeed > EngPower[i].Item1)
+                if (inValue > data[i].Item1)
                 {
-                    double lval = (EngineSpeed - EngPower[i].Item1) / (EngPower[i + 1].Item1 - EngPower[i].Item1);
-                    return lerp(EngPower[i].Item2, EngPower[i + 1].Item2, lval);
+                    double lval = (inValue - data[i].Item1) / (data[i + 1].Item1 - data[i].Item1);
+                    return lerp(data[i].Item2, data[i + 1].Item2, lval);
                 }
             }
             return 0;
+        }
+
+        static double GetEnginePower(double EngineSpeed)
+        {
+            return LerpData(EngPower, EngineSpeed);
+
+            double maxNM0 = 550;
+            double maxNM1 = 525;
+
+            (double, double)[] data_ = new (double, double)[] {
+            (0, 0),
+            (1250, maxNM0),
+            (3750, maxNM0),
+            (4250, maxNM1),
+            (5800, maxNM1),
+            (6750, 450),
+            (7000, 400)
+        };
+
+            double nm = LerpData(data_, EngineSpeed);
+            return nm * EngineSpeed / 7187 * w2hp;
         }
 
         static double GetEngineSpeed(int Gear, double Speed)
@@ -75,19 +98,23 @@ namespace AccelerationCalculator
             return Cx * FrontArea * p * x * x * x / 2;
         }
 
-        static double GetWellPower(double Speed, double Acceleration_g, double EngineSpeed, double turboLagTime, double DSCPower, ref bool WheelSlip)
+        static double KWellResistance(double speed)
         {
-            double Fk = 0.01 * (1 + 5.5E-4 * Speed * Speed);
+            return 0.01 * (1 + 5.5E-4 * speed * speed);
+        }
 
-            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * DSCPower * (turboLagTime > 0 ? 0.5 : 1.0);
-            dirtPower *= 1 - Fk;
+        static double GetWellPower(double Speed, double Acceleration_g, double EngineSpeed, double PowerCrr, ref bool WheelSlip, Graph g_dsc, double time)
+        {
+            double Fk = KWellResistance(Speed);
+
+            double dirtPower = GetEnginePower(EngineSpeed) * TransmissionEfficiency * PowerCrr;
 
             //P=F*V
-            double dirtForce = dirtPower / (Speed + 0.2);
-            double theoreticalForceLimitAWD = Mass * 9.8 * Friction;// * ((RWD ? 0.75 : 0) + (FWD ? 0.25 : 0));
+            double dirtForce = (dirtPower) / (Speed + 0.7);
+            double theoreticalForceLimitAWD = Mass * 9.8 * Friction;
             if (RWD && !FWD)
             {
-                double rw_ballance = 0.35 * Acceleration_g;
+                double rw_ballance = 0.28 * Acceleration_g;
                 theoreticalForceLimitAWD *= 0.5 + rw_ballance;
             }
             if (!RWD && FWD)
@@ -96,16 +123,22 @@ namespace AccelerationCalculator
                 theoreticalForceLimitAWD *= 0.5 - fw_ballance;
             }
 
+            bool preWheelSleep = WheelSlip;
 
-            double slipK = Math.Min((dirtForce / theoreticalForceLimitAWD - 1) / 0.3, 1);
-
-            if (slipK > 0)
-            {
+            if (dirtForce > theoreticalForceLimitAWD)
                 WheelSlip = true;
-                return dirtPower * (theoreticalForceLimitAWD / dirtForce) * lerp(1, 0.8, slipK);
-            }
             else
                 WheelSlip = false;
+
+            double k = saturate((dirtForce / theoreticalForceLimitAWD - 1)*1000);
+            k = lerp(1, 0.7, k);
+            g_dsc.Point(time, k);
+
+
+            if (WheelSlip)// && preWheelSleep)
+                dirtPower *= (theoreticalForceLimitAWD / dirtForce) * k;
+
+            dirtPower *= 1 - Fk;
 
             dirtPower -= AirResistance(Speed);
 
@@ -121,33 +154,33 @@ namespace AccelerationCalculator
             Graph g_e_pwr = new Graph("e_pwr", 500, 300, 7000, EnginePower / w2hp * 1.1, 1000, 50 );
             Graph g_dsc = new Graph("DSC", 500, 300, 20, 1, 1, 1);
 
-            double[] times = new double[30];
+            double[] times = new double[50];
 
             double time = 0;
             double speed = 0;
-            double engineSpeed = 0;
+            double engineSpeed = LaunchEngSpeed;
             double wheelSlipTime = 0;
             double distance = 0;
             double quarter = 0;
             double quarterSpeed = 0;
             double turboLagTime = TurboLagTime;
             double acceleration_g = 0;
+            double pre_acceleration_g = 0;
             double gearСlutch = GearСlutchStart;
-            double dscCorr = 1.0;
             int quarterGear = 0;
             bool wheelSlip = false;
+
+            double powerInc = 0;
 
             bool needGearShift = false;
             int gear = 1;
 
             for (int i = 0; i < 7000; i++)
-            {
                 g_e_pwr.Point(i, GetEnginePower(i) / w2hp);
-            }
 
             Console.WriteLine("km/h\ttime");
 
-            while (speed < 230 * kmh2ms)
+            while (time < 0.1 || acceleration_g > 0.001)
             {
                 double speedKmH = speed * 3.6;
 
@@ -176,6 +209,8 @@ namespace AccelerationCalculator
 
                     g_speed.Line(time, speedKmH, time + GearShiftTime, speedKmH);
                     g_e_speed.Line(time, engineSpeed, time + GearShiftTime, GetEngineSpeed(gear, speed));
+                    g_acc.Line(time - TickSize, acceleration_g, time + GearShiftTime, acceleration_g);
+
 
                     time += GearShiftTime;
                     turboLagTime -= GearShiftTime;
@@ -183,7 +218,15 @@ namespace AccelerationCalculator
                     continue;
                 }
 
+                double preESpeed = engineSpeed;
+
                 engineSpeed = GetEngineSpeed(gear, speed);
+
+                if (engineSpeed > preESpeed + EngSpeedPerSec)
+                    engineSpeed = preESpeed + EngSpeedPerSec;
+                if (engineSpeed < preESpeed - EngSpeedPerSec || wheelSlip)//DSC
+                    engineSpeed = preESpeed - EngSpeedPerSec;
+
 
                 if (gear == 1)
                 {
@@ -196,31 +239,27 @@ namespace AccelerationCalculator
                         needGearShift = true;
                 }
 
-                //DSC
-                if (wheelSlip)
-                    dscCorr = Math.Max(0, dscCorr - DSCReaction * TickSize);
-                else
-                    dscCorr = Math.Min(1, dscCorr + DSCReaction * TickSize * 3);
-
-                g_dsc.Point(time, dscCorr);
-
                 double prePower = (Mass + WellsMass * 0.8) * speed * speed / 2;
 
-                double prwCrr = dscCorr;
+                double prwCrr = 1;
                 //gearСlutch
                 if (gearСlutch > 0)
                 {
-                    prwCrr *= smoothstep(GearСlutchStart / gearСlutch);
+                    prwCrr *= (GearСlutchStart / gearСlutch);
 
-                    engineSpeed = lerp(engineSpeed, LaunchEngSpeed, smoothstep(gearСlutch / GearСlutchStart));
+                    engineSpeed = lerp(engineSpeed, LaunchEngSpeed, (gearСlutch / GearСlutchStart));
                     gearСlutch -= TickSize;
                 }
 
-                double powerInc = GetWellPower(speed, acceleration_g, engineSpeed, turboLagTime, prwCrr, ref wheelSlip);
+                prwCrr *= (turboLagTime > 0 ? 0.5 : 1.0);
+
+                powerInc = powerInc * 0.95 + 0.05*GetWellPower(speed, acceleration_g, engineSpeed, prwCrr, ref wheelSlip, g_dsc, time);
 
                 double new_speed = Math.Sqrt(2 * (prePower + powerInc * TickSize) / (Mass + WellsMass * 0.8));
 
+                pre_acceleration_g = acceleration_g;
                 acceleration_g = (new_speed - speed) / TickSize / 9.8;
+                acceleration_g = pre_acceleration_g * 0.98 + acceleration_g * 0.02;
 
                 speed = new_speed;
 
@@ -232,14 +271,17 @@ namespace AccelerationCalculator
                 g_speed.Point(time, speedKmH);
                 g_e_speed.Point(time, engineSpeed);
                 g_weel_pow.Point(time, powerInc / w2hp);
-                g_acc.Point(time, acceleration_g);
+                g_acc.Line(time - TickSize, pre_acceleration_g, time, acceleration_g);
             }
 
-            Console.WriteLine();
+
+            Console.WriteLine("" );
+            Console.WriteLine("Max Speed \t{0}", Math.Round(speed * 3.6, 2));
             Console.WriteLine("Quarter \t{0}", Math.Round(quarter, 2));
             Console.WriteLine("Quarter Speed \t{0}", Math.Round(quarterSpeed, 2));
             Console.WriteLine("Quarter Gear \t{0}", quarterGear);
-            Console.WriteLine("100-200 \t{0}", Math.Round(times[20] - times[10], 2));
+            if (times[20] > 0)
+                Console.WriteLine("100-200 \t{0}", Math.Round(times[20] - times[10], 2));
             Console.WriteLine("Wheel Slip Time {0}", Math.Round(wheelSlipTime, 2));
 
             g_speed.Save();
@@ -270,6 +312,11 @@ namespace AccelerationCalculator
             if (x > upperlimit)
                 x = upperlimit;
             return x;
+        }
+
+        static double saturate(double x)
+        {
+            return clamp(x, 0, 1);
         }
     }
 }
